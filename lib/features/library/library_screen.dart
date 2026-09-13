@@ -281,13 +281,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                         ],
                       );
                     }
-                    final columns = constraints.maxWidth >= 1100
-                        ? 5
-                        : constraints.maxWidth >= 800
-                        ? 4
-                        : constraints.maxWidth >= 600
-                        ? 3
-                        : 2;
+                    final columns = dramaColumns(constraints.maxWidth);
                     return CustomScrollView(
                       controller: _scroll,
                       physics: const AlwaysScrollableScrollPhysics(),
@@ -459,20 +453,22 @@ class _LibraryScreenState extends State<LibraryScreen> {
     );
   }
 
-  Widget _skeleton() => GridView.builder(
-    physics: const AlwaysScrollableScrollPhysics(),
-    padding: const EdgeInsets.all(14),
-    itemCount: 6,
-    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-      crossAxisCount: 2,
-      mainAxisSpacing: 14,
-      crossAxisSpacing: 14,
-      childAspectRatio: .59,
-    ),
-    itemBuilder: (_, _) => Container(
-      decoration: BoxDecoration(
-        color: context.chipColor,
-        borderRadius: BorderRadius.circular(16),
+  Widget _skeleton() => LayoutBuilder(
+    builder: (context, constraints) => GridView.builder(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.all(14),
+      itemCount: 6,
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: dramaColumns(constraints.maxWidth),
+        mainAxisSpacing: 14,
+        crossAxisSpacing: 14,
+        childAspectRatio: .59,
+      ),
+      itemBuilder: (_, _) => Container(
+        decoration: BoxDecoration(
+          color: context.chipColor,
+          borderRadius: BorderRadius.circular(16),
+        ),
       ),
     ),
   );

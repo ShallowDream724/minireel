@@ -2,8 +2,8 @@ import 'dart:io';
 
 import 'package:image/image.dart' as img;
 
-/// Deterministic Android assets derived from the user's original artwork.
-void main() {
+/// Deterministic app icons derived from the user's original artwork.
+void main(List<String> arguments) {
   final logo = img.decodePng(File('assets/logo.png').readAsBytesSync())!;
   final legacy = img.Image(width: 1024, height: 1024, numChannels: 4);
   img.fill(legacy, color: img.ColorRgba8(16, 19, 24, 255));
@@ -25,6 +25,15 @@ void main() {
     'xxhdpi': 144,
     'xxxhdpi': 192,
   };
+  final windows = Directory('windows/runner/resources')
+    ..createSync(recursive: true);
+  File('${windows.path}/app_icon.ico').writeAsBytesSync(
+    img.encodeIco(img.copyResize(legacy, width: 256, height: 256)),
+  );
+  if (arguments.contains('--windows-only')) {
+    stdout.writeln('Generated Windows icon from assets/logo.png');
+    return;
+  }
   for (final entry in densities.entries) {
     final dir = Directory('android/app/src/main/res/mipmap-${entry.key}')
       ..createSync(recursive: true);
@@ -60,7 +69,5 @@ void main() {
   File('${previewDir.path}/launcher-icon.png').writeAsBytesSync(
     img.encodePng(img.copyResize(legacy, width: 256, height: 256)),
   );
-  stdout.writeln(
-    'Generated Android legacy and adaptive icons from assets/logo.png',
-  );
+  stdout.writeln('Generated Windows and Android icons from assets/logo.png');
 }

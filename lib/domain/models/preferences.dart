@@ -18,6 +18,8 @@ final class Preferences {
     this.largeText = false,
     this.haptics = true,
     this.gestureHintSeen = false,
+    this.pauseWhenMinimized = true,
+    this.desktopVolume = .75,
   });
 
   final AppAppearance appearance;
@@ -30,6 +32,8 @@ final class Preferences {
   final bool largeText;
   final bool haptics;
   final bool gestureHintSeen;
+  final bool pauseWhenMinimized;
+  final double desktopVolume;
 
   Preferences copyWith({
     AppAppearance? appearance,
@@ -42,6 +46,8 @@ final class Preferences {
     bool? largeText,
     bool? haptics,
     bool? gestureHintSeen,
+    bool? pauseWhenMinimized,
+    double? desktopVolume,
   }) => Preferences(
     appearance: appearance ?? this.appearance,
     speed: speed ?? this.speed,
@@ -53,6 +59,8 @@ final class Preferences {
     largeText: largeText ?? this.largeText,
     haptics: haptics ?? this.haptics,
     gestureHintSeen: gestureHintSeen ?? this.gestureHintSeen,
+    pauseWhenMinimized: pauseWhenMinimized ?? this.pauseWhenMinimized,
+    desktopVolume: desktopVolume ?? this.desktopVolume,
   );
 
   Map<String, dynamic> toJson() => {
@@ -66,6 +74,8 @@ final class Preferences {
     'largeText': largeText,
     'haptics': haptics,
     'gestureHintSeen': gestureHintSeen,
+    'pauseWhenMinimized': pauseWhenMinimized,
+    'desktopVolume': desktopVolume,
   };
 
   factory Preferences.fromJson(Map<String, dynamic> json) => Preferences(
@@ -87,5 +97,10 @@ final class Preferences {
     largeText: json['largeText'] == true,
     haptics: json['haptics'] != false,
     gestureHintSeen: json['gestureHintSeen'] == true,
+    pauseWhenMinimized: json['pauseWhenMinimized'] != false,
+    desktopVolume:
+        json['desktopVolume'] is num && (json['desktopVolume'] as num).isFinite
+        ? (json['desktopVolume'] as num).toDouble().clamp(0, 1)
+        : .75,
   );
 }

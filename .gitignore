@@ -22,6 +22,8 @@ app.*.map.json
 /android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java
 
 # Signing material and local overrides (the bundled source config is tracked)
+/ANDROID_SIGNING_SECRETS.txt
+/android/.signing/
 key.properties
 *.jks
 *.keystore
@@ -33,7 +35,7 @@ key.properties
 /config/*.local.json
 /assets/config/*.local.json
 
-# Future Windows runner: generated integration files only
+# Windows runner: generated integration files only
 /windows/flutter/ephemeral/
 /windows/flutter/generated_plugin_registrant.cc
 /windows/flutter/generated_plugin_registrant.h

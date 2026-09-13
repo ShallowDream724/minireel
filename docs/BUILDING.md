@@ -1,6 +1,6 @@
 # 开发与构建
 
-本文描述当前 Flutter 工程的实际构建方式。使用介绍见 [README](../README.md)，人工验收见 [Android 验收清单](04_Android首版验收清单.md)。
+本文描述当前 Flutter 工程的实际构建方式。使用介绍见 [README](../README.md)，人工验收见 [Android 验收清单](04_Android首版验收清单.md)和 [Windows 验收清单](05_Windows验收清单.md)。
 
 ## 环境
 
@@ -17,6 +17,8 @@
 | Gradle | 8.14，使用仓库内的 wrapper |
 
 需要接受 Android SDK licenses，并允许构建期间下载 Dart/Maven 依赖、Gradle 和 `media_kit` 使用的原生媒体库。应用无需 Go、Node.js 或外部 FFmpeg 可执行文件。
+
+Windows x64 构建需要 Windows 10/11、Visual Studio 2022 或更新版本，以及「使用 C++ 的桌面开发」工作负载（包含 MSVC、CMake 和 Windows SDK）。先用 `flutter doctor -v` 确认 Windows 和 Visual Studio 检查通过。Windows 构建不依赖 Android SDK。
 
 ## 获取与运行
 
@@ -42,24 +44,49 @@ Flutter 3.41.9 的 Release 打包命令需要保留默认的 Pub 步骤，以按
 
 安装包位于 `build/app/outputs/flutter-apk/`，分别面向 `arm64-v8a`、`armeabi-v7a` 和 `x86_64`。不加 `--split-per-abi` 可生成单个通用 APK。
 
-**当前 release 构建使用开发签名，供本地验证。** 正式发布前需要在 `android/app/build.gradle.kts` 配置稳定的发布签名。仅创建 `key.properties` 并不会自动改变当前签名配置。不要把签名私钥或密码提交到仓库。
+**Android Release 构建必须配置正式签名，缺少时会直接失败。** CI 从 GitHub Secrets 还原签名文件，本地可设置 `ANDROID_KEYSTORE_PATH`、`ANDROID_KEYSTORE_PASSWORD`、`ANDROID_KEY_ALIAS` 和 `ANDROID_KEY_PASSWORD`，或在被 Git 忽略的 `android/key.properties` 中填写 `storeFile`、`storePassword`、`keyAlias`、`keyPassword`。`storeFile` 的相对路径以 `android/` 为基准。Debug 构建继续使用开发签名。
 
 应用版本由 `pubspec.yaml` 的 `version` 控制，也可通过 Flutter 的 `--build-name` / `--build-number` 覆盖。
 
-## 后续 GitHub Actions 打包
+## Windows 运行与打包
 
-当前仓库尚未添加 Actions workflow。未来工作流可以直接使用上述检查和打包命令，不需要重新创建 Flutter 工程、生成图标、生成测试样本或另外拷贝数据源文件。
+```sh
+flutter pub get --enforce-lockfile
+flutter run -d windows
+flutter build windows --release
+```
 
-建议执行顺序：
+可执行文件位于 `build/windows/x64/runner/Release/minireel.exe`。分发时需要压缩 **整个 `Release/` 目录**，包括 `data/` 和旁边的 DLL，不能只分发 `.exe`。`media_kit_libs_windows_video` 提供视频原生库；SQLite 3 由 Dart build hooks 构建并随目录打包，无需用户单独安装 SQLite 或 FFmpeg。
 
-1. 检出代码，设置 JDK 17、Flutter 3.41.9 和 Android SDK。
-2. 安装需要的 SDK / NDK，并接受 licenses。
-3. 执行 `flutter pub get --enforce-lockfile`。
-4. 执行静态检查和 `flutter test test --no-pub`。
-5. 执行 `flutter build apk --release --split-per-abi`（保留默认 Pub 步骤），将 `build/app/outputs/flutter-apk/*.apk` 上传为构建产物。
-6. 确定正式发布流程后，再从 GitHub Secrets 注入稳定的发布签名。
+Windows 同样先执行静态检查和 `flutter test test --no-pub`，再执行带默认 Pub 步骤的 Release 构建。安装 Inno Setup 6.3 或更新版本后，可执行 `./tool/build_windows_installer.ps1 -Version 0.1.0 -BuildNumber 1`，在 `output/release/` 生成安装程序。安装程序按当前用户安装，包含 Flutter、视频、SQLite 和 MSVC 运行库。
 
-`integration_test/` 中的测试需要 Android 设备和真实网络/片源。它们应作为单独的人工或设备验收步骤，不宜作为每次打包的固定前置条件。
+数据库和窗口位置保存在 `path_provider` 返回的应用支持目录，独立于安装目录。Windows 图标已包含在原生工程中，常规构建不需要重新生成。
+
+## GitHub Actions 自动发布
+
+[Release workflow](../.github/workflows/release.yml) 在推送 `v` 开头的版本 tag 时运行，例如 `v0.1.0` 或 `v0.2.0-beta.1`。普通分支推送不会发布。应用版本来自 tag，构建号来自该工作流的 `github.run_number`；预发布 tag 自动标记为 prerelease。
+
+在仓库 Settings → Secrets and variables → Actions 添加四项 Repository Secrets：
+
+| Secret | 内容 |
+| --- | --- |
+| `ANDROID_KEYSTORE_BASE64` | 完整签名 keystore 文件的 Base64 |
+| `ANDROID_KEYSTORE_PASSWORD` | keystore 密码 |
+| `ANDROID_KEY_ALIAS` | 签名 key alias |
+| `ANDROID_KEY_PASSWORD` | 签名 key 密码 |
+
+后续版本应继续使用同一签名。首次从开发签名包切换到正式签名包时，需要卸载原开发包再安装。
+
+工作流并行构建 Windows x64 安装程序和 Android 三种 ABI APK，验证 APK 签名后上传中间构建产物。两端都成功后，发布任务创建草稿 Release、上传四个安装文件和 `SHA256SUMS.txt`，最后公开 Release。无需额外配置发布 token，任务使用仅在发布 job 授予写权限的 `GITHUB_TOKEN`。
+
+```sh
+git tag -a v0.1.0 -m "Release v0.1.0"
+git push origin v0.1.0
+```
+
+已公开的同名 Release 不会被覆盖；新版本使用新 tag。未完成的草稿可通过重新运行失败任务续传。`ANDROID_SIGNING_SECRETS.txt`、`android/.signing/` 和本地 `key.properties` 均被 Git 忽略，临时 txt 填写完 Secrets 后删除。
+
+`integration_test/` 中已有的 Android 测试需要设备和真实网络/片源。它们应作为单独的人工或设备验收步骤，不宜作为每次打包的固定前置条件。Windows 键盘、导航、播放生命周期和 SQLite 持久化回归包含在 `test/` 中。
 
 ## 仓库完整性
 
@@ -69,6 +96,7 @@ Flutter 3.41.9 的 Release 打包命令需要保留默认的 Pub 步骤，以按
 - `assets/logo.png` 与 **`assets/config/sources.json`**。
 - `android/` 的 Manifest、Kotlin 入口、Gradle 配置、图标和启动页资源。
 - `android/gradlew`、`android/gradlew.bat`、`android/gradle/wrapper/gradle-wrapper.jar` 和对应 `.properties`。
+- `windows/` 的 CMake、runner 源码、Manifest、资源定义和 `runner/resources/app_icon.ico`；Flutter 生成的插件注册文件与 `ephemeral/` 目录保持忽略。
 - `test/`，包括 `test/fixtures/playback_codec.json`；以及 `integration_test/`、`tool/`。
 
 `.gitattributes` 保证 Unix wrapper 的 LF 换行，Git 中的 `android/gradlew` 保留可执行权限，便于 Linux runner 使用。
@@ -99,8 +127,11 @@ Flutter 3.41.9 的 Release 打包命令需要保留默认的 Pub 步骤，以按
 dart run tool/probe_source.dart
 dart run tool/probe_source.dart --fallback
 
-# 替换 logo 后重新生成 Android 图标
+# 替换 logo 后重新生成 Windows 和 Android 图标
 dart run tool/generate_icons.dart
+
+# 仅重新生成 Windows 图标
+dart run tool/generate_icons.dart --windows-only
 
 # 修改协议解码测试样本时使用；常规构建无需 Node.js
 node tool/generate_codec_vectors.cjs
@@ -110,4 +141,4 @@ node tool/generate_codec_vectors.cjs
 
 ## 平台范围
 
-当前仅有 Android runner。Windows 是后续方向，可复用数据源、播放会话与界面，届时需补充 runner、对应媒体原生库和 SQLite backend。当前不提供 macOS / iOS 工程。
+当前包含 Android 和 Windows x64 runner，两端共用数据源、播放会话和收藏/历史模型。Windows 使用独立的桌面播放控制、窗口管理和 SQLite FFI backend；Android 继续使用触屏手势和原生 SQLite 插件。当前不提供 macOS / iOS 工程。

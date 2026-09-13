@@ -18,6 +18,12 @@ final class DeviceControls {
   void Function(double)? onVolumeChanged;
 
   Future<void> initialize() async {
+    if (Platform.isWindows) {
+      applicationBrightnessAvailable = false;
+      brightness = 1;
+      volume = 1;
+      return;
+    }
     try {
       brightness = (await ScreenBrightness.instance.application).clamp(
         .03,
@@ -79,6 +85,8 @@ final class DeviceControls {
       await WakelockPlus.toggle(enable: enabled);
     } on PlatformException {
       /* Some desktop shells do not expose this capability. */
+    } on MissingPluginException {
+      /* Optional in headless tests. */
     }
   }
 
@@ -88,12 +96,14 @@ final class DeviceControls {
       VolumeController.instance.removeListener();
       VolumeController.instance.showSystemUI = true;
     }
-    try {
-      await ScreenBrightness.instance.resetApplicationScreenBrightness();
-    } on PlatformException {
-      /* Brightness was never overridden. */
-    } on MissingPluginException {
-      /* Optional capability on future platforms. */
+    if (!Platform.isWindows) {
+      try {
+        await ScreenBrightness.instance.resetApplicationScreenBrightness();
+      } on PlatformException {
+        /* Brightness was never overridden. */
+      } on MissingPluginException {
+        /* Optional capability on future platforms. */
+      }
     }
     await keepAwake(false);
   }

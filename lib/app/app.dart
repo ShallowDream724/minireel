@@ -5,13 +5,18 @@ import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
 import '../domain/models/drama.dart';
+import '../desktop/desktop_navigation.dart';
+import '../desktop/desktop_window.dart';
+import '../desktop/window_chrome.dart';
 import '../domain/models/preferences.dart';
 import '../features/library/library_screen.dart';
 import '../features/mine/mine_screen.dart';
 import '../features/player/player_screen.dart';
+import '../features/player/desktop_player_screen.dart';
 import '../features/settings/settings_screen.dart';
 import 'app_controller.dart';
 import 'theme.dart';
+import 'platform.dart';
 
 class MiniReelApp extends StatelessWidget {
   const MiniReelApp({super.key, required this.controller});
@@ -42,7 +47,21 @@ class MiniReelApp extends StatelessWidget {
               (controller.preferences.largeText ? 1.18 : 1);
           return MediaQuery(
             data: media.copyWith(textScaler: TextScaler.linear(scale)),
-            child: child!,
+            child: isWindowsDesktop
+                ? ListenableBuilder(
+                    listenable: DesktopWindow.instance,
+                    child: child,
+                    builder: (context, navigator) => Overlay.wrap(
+                      child: Column(
+                        children: [
+                          if (!DesktopWindow.instance.inPlayer)
+                            const DesktopTitleBar(),
+                          Expanded(child: navigator!),
+                        ],
+                      ),
+                    ),
+                  )
+                : child!,
           );
         },
         home: const _AppShell(),
@@ -74,8 +93,9 @@ class _AppShellState extends State<_AppShell> {
     try {
       await Navigator.of(context).push(
         PageRouteBuilder<void>(
-          pageBuilder: (_, _, _) =>
-              PlayerScreen(drama: drama, initialEpisode: episode),
+          pageBuilder: (_, _, _) => isWindowsDesktop
+              ? DesktopPlayerScreen(drama: drama, initialEpisode: episode)
+              : PlayerScreen(drama: drama, initialEpisode: episode),
           transitionDuration: const Duration(milliseconds: 240),
           reverseTransitionDuration: const Duration(milliseconds: 200),
           transitionsBuilder: (_, animation, _, child) => FadeTransition(
@@ -101,6 +121,44 @@ class _AppShellState extends State<_AppShell> {
   @override
   Widget build(BuildContext context) {
     final app = AppScope.watch(context);
+    final content = Column(
+      children: [
+        if (app.persistenceError != null)
+          MaterialBanner(
+            content: Text(
+              app.persistenceError!,
+              style: const TextStyle(fontSize: 12),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => setState(() => app.persistenceError = null),
+                child: const Text('知道了'),
+              ),
+            ],
+          ),
+        Expanded(
+          child: IndexedStack(
+            index: _tab,
+            children: [
+              LibraryScreen(onPlay: _play),
+              MineScreen(
+                onPlay: _play,
+                onExplore: () => setState(() => _tab = 0),
+              ),
+              Align(
+                alignment: Alignment.topCenter,
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: isWindowsDesktop ? 900 : double.infinity,
+                  ),
+                  child: const SettingsScreen(),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
@@ -116,69 +174,59 @@ class _AppShellState extends State<_AppShell> {
       child: Scaffold(
         body: SafeArea(
           bottom: false,
-          child: Column(
-            children: [
-              if (app.persistenceError != null)
-                MaterialBanner(
-                  content: Text(
-                    app.persistenceError!,
-                    style: const TextStyle(fontSize: 12),
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () =>
-                          setState(() => app.persistenceError = null),
-                      child: const Text('知道了'),
-                    ),
-                  ],
-                ),
-              Expanded(
-                child: IndexedStack(
-                  index: _tab,
+          child: isWindowsDesktop
+              ? Row(
                   children: [
-                    LibraryScreen(onPlay: _play),
-                    MineScreen(
-                      onPlay: _play,
-                      onExplore: () => setState(() => _tab = 0),
+                    DesktopNavigation(
+                      selected: _tab,
+                      onSelect: (tab) => setState(() => _tab = tab),
                     ),
-                    const SettingsScreen(),
+                    Expanded(child: content),
                   ],
+                )
+              : content,
+        ),
+        bottomNavigationBar: isWindowsDesktop
+            ? null
+            : Container(
+                decoration: BoxDecoration(
+                  color: context.colors.surface,
+                  border: Border(
+                    top: BorderSide(
+                      color: Theme.of(context).dividerColor,
+                      width: .7,
+                    ),
+                  ),
+                ),
+                child: SafeArea(
+                  top: false,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 3, 16, 5),
+                    child: Row(
+                      children: [
+                        _navigation(
+                          0,
+                          Icons.movie_outlined,
+                          Icons.movie_rounded,
+                          '短剧库',
+                        ),
+                        _navigation(
+                          1,
+                          Icons.person_outline_rounded,
+                          Icons.person_rounded,
+                          '我的',
+                        ),
+                        _navigation(
+                          2,
+                          Icons.tune_rounded,
+                          Icons.tune_rounded,
+                          '设置',
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ),
-            ],
-          ),
-        ),
-        bottomNavigationBar: Container(
-          decoration: BoxDecoration(
-            color: context.colors.surface,
-            border: Border(
-              top: BorderSide(color: Theme.of(context).dividerColor, width: .7),
-            ),
-          ),
-          child: SafeArea(
-            top: false,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 3, 16, 5),
-              child: Row(
-                children: [
-                  _navigation(
-                    0,
-                    Icons.movie_outlined,
-                    Icons.movie_rounded,
-                    '短剧库',
-                  ),
-                  _navigation(
-                    1,
-                    Icons.person_outline_rounded,
-                    Icons.person_rounded,
-                    '我的',
-                  ),
-                  _navigation(2, Icons.tune_rounded, Icons.tune_rounded, '设置'),
-                ],
-              ),
-            ),
-          ),
-        ),
       ),
     );
   }

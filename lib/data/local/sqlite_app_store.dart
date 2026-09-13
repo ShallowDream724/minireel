@@ -1,7 +1,10 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:path/path.dart' as path;
-import 'package:sqflite/sqflite.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:sqflite/sqflite.dart' as mobile;
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import '../../domain/models/drama.dart';
 import '../../domain/models/preferences.dart';
@@ -17,7 +20,16 @@ final class SqliteAppStore implements AppStore {
     DatabaseFactory? factory,
     String? databasePath,
   }) async {
-    final backend = factory ?? databaseFactory;
+    if (factory == null && Platform.isWindows) {
+      sqfliteFfiInit();
+      factory = databaseFactoryFfi;
+      if (databasePath == null) {
+        final support = await getApplicationSupportDirectory();
+        await support.create(recursive: true);
+        databasePath = path.join(support.path, 'minireel.db');
+      }
+    }
+    final backend = factory ?? mobile.databaseFactory;
     final file =
         databasePath ??
         path.join(await backend.getDatabasesPath(), 'minireel.db');

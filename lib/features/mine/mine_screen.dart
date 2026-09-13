@@ -109,11 +109,7 @@ class _MineScreenState extends State<MineScreen> {
               ? LayoutBuilder(
                   builder: (context, constraints) => MasonryGridView.count(
                     padding: const EdgeInsets.fromLTRB(16, 2, 16, 24),
-                    crossAxisCount: constraints.maxWidth >= 800
-                        ? 4
-                        : constraints.maxWidth >= 600
-                        ? 3
-                        : 2,
+                    crossAxisCount: dramaColumns(constraints.maxWidth),
                     mainAxisSpacing: 14,
                     crossAxisSpacing: 14,
                     itemCount: app.favorites.length,

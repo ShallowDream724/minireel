@@ -24,7 +24,7 @@ void main() {
   MediaKit.ensureInitialized();
 
   testWidgets(
-    'Android resolves a real drama, plays, seeks, pauses, and switches episodes',
+    '${Platform.operatingSystem} resolves a real drama, plays, seeks, pauses, and switches episodes',
     (tester) async {
       final raw = jsonDecode(
         await rootBundle.loadString('assets/config/sources.json'),

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -14,11 +15,16 @@ import 'data/local/sqlite_app_store.dart';
 import 'data/repositories/drama_repository.dart';
 import 'data/sources/hongguo/hongguo_adapter.dart';
 import 'data/sources/source_adapter.dart';
+import 'desktop/desktop_window.dart';
+import 'desktop/window_chrome.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  if (Platform.isWindows) await DesktopWindow.instance.initialize();
   MediaKit.ensureInitialized();
-  unawaited(SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge));
+  if (Platform.isAndroid) {
+    unawaited(SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge));
+  }
   runApp(const MiniReelBootstrap());
 }
 
@@ -56,6 +62,14 @@ class _MiniReelBootstrapState extends State<MiniReelBootstrap> {
       final app = AppController(store, repository);
       await app.initialize();
       _app = app;
+      if (Platform.isWindows) {
+        DesktopWindow.instance.onAppClose = () async {
+          await app.flush();
+          app.repository.dispose();
+          http.close();
+          await store.close();
+        };
+      }
       return app;
     } on Exception {
       await store.close();
@@ -66,6 +80,7 @@ class _MiniReelBootstrapState extends State<MiniReelBootstrap> {
 
   @override
   void dispose() {
+    if (Platform.isWindows) DesktopWindow.instance.onAppClose = null;
     final app = _app;
     if (app != null) {
       app.repository.dispose();
@@ -86,6 +101,16 @@ class _MiniReelBootstrapState extends State<MiniReelBootstrap> {
       return MaterialApp(
         debugShowCheckedModeBanner: false,
         theme: ReelTheme.make(Brightness.dark),
+        builder: Platform.isWindows
+            ? (context, child) => Overlay.wrap(
+                child: Column(
+                  children: [
+                    const DesktopTitleBar(),
+                    Expanded(child: child!),
+                  ],
+                ),
+              )
+            : null,
         home: Scaffold(
           body: Center(
             child: Padding(

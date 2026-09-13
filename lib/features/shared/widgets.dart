@@ -1,7 +1,18 @@
 import 'package:flutter/material.dart';
 
 import '../../app/theme.dart';
+import '../../app/platform.dart';
 import '../../domain/models/drama.dart';
+
+int dramaColumns(double width) => isWindowsDesktop
+    ? ((width - 28) / 190).floor().clamp(2, 10)
+    : width >= 1100
+    ? 5
+    : width >= 800
+    ? 4
+    : width >= 600
+    ? 3
+    : 2;
 
 String formatTime(Duration duration) {
   final seconds = duration.inSeconds.clamp(0, 359999);
@@ -107,6 +118,7 @@ class DramaCard extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         onLongPress: onLongPress,
+        onSecondaryTap: isWindowsDesktop ? onLongPress : null,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -315,19 +327,38 @@ Future<T?> showReelSheet<T>(
   BuildContext context, {
   required WidgetBuilder builder,
   bool dark = false,
-}) => showModalBottomSheet<T>(
-  context: context,
-  isScrollControlled: true,
-  useSafeArea: true,
-  backgroundColor: dark ? const Color(0xFF171A22) : null,
-  barrierColor: Colors.black.withValues(alpha: .55),
-  builder: (sheetContext) => dark
-      ? Theme(
-          data: ReelTheme.make(Brightness.dark),
-          child: Builder(builder: builder),
-        )
-      : builder(sheetContext),
-);
+}) {
+  if (isWindowsDesktop) {
+    return showDialog<T>(
+      context: context,
+      barrierColor: Colors.black.withValues(alpha: .5),
+      builder: (dialogContext) => Dialog(
+        backgroundColor: dark ? const Color(0xFF171A22) : null,
+        constraints: const BoxConstraints(maxWidth: 540),
+        clipBehavior: Clip.antiAlias,
+        child: dark
+            ? Theme(
+                data: ReelTheme.make(Brightness.dark),
+                child: Builder(builder: builder),
+              )
+            : Builder(builder: builder),
+      ),
+    );
+  }
+  return showModalBottomSheet<T>(
+    context: context,
+    isScrollControlled: true,
+    useSafeArea: true,
+    backgroundColor: dark ? const Color(0xFF171A22) : null,
+    barrierColor: Colors.black.withValues(alpha: .55),
+    builder: (sheetContext) => dark
+        ? Theme(
+            data: ReelTheme.make(Brightness.dark),
+            child: Builder(builder: builder),
+          )
+        : builder(sheetContext),
+  );
+}
 
 class SheetFrame extends StatelessWidget {
   const SheetFrame({
@@ -358,17 +389,19 @@ class SheetFrame extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Center(
-              child: Container(
-                width: 36,
-                height: 4,
-                margin: const EdgeInsets.only(top: 10, bottom: 10),
-                decoration: BoxDecoration(
-                  color: context.muted.withValues(alpha: .28),
-                  borderRadius: BorderRadius.circular(4),
+            if (isWindowsDesktop) const SizedBox(height: 18),
+            if (!isWindowsDesktop)
+              Center(
+                child: Container(
+                  width: 36,
+                  height: 4,
+                  margin: const EdgeInsets.only(top: 10, bottom: 10),
+                  decoration: BoxDecoration(
+                    color: context.muted.withValues(alpha: .28),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
                 ),
               ),
-            ),
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 2, 12, 14),
               child: Row(

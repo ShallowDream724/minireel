@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
@@ -15,7 +14,7 @@ void main() {
   testWidgets(
     'real Android app: library, player gestures, sheets, lock, lifecycle and history',
     (tester) async {
-      app.main();
+      await app.main();
 
       Future<void> until(bool Function() condition, String description) async {
         final deadline = DateTime.now().add(const Duration(seconds: 40));

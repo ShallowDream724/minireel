@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../app/app_controller.dart';
 import '../../app/theme.dart';
+import '../../app/platform.dart';
 import '../../domain/models/preferences.dart';
 import '../shared/widgets.dart';
+import '../player/desktop_player_input.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -13,6 +16,9 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   Future<int>? _cache;
+  late final Future<PackageInfo?> _packageInfo = PackageInfo.fromPlatform()
+      .then<PackageInfo?>((value) => value)
+      .catchError((Object _) => null);
 
   @override
   void didChangeDependencies() {
@@ -133,63 +139,86 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       app.setPreferences(prefs.copyWith(rememberProgress: v)),
                 ),
               ]),
-              _group('播放 · 手势与控制', [
-                _row(
-                  Icons.view_sidebar_outlined,
-                  '控制栏位置',
-                  value: prefs.railSide == RailSide.right ? '右侧' : '左侧',
-                  onTap: () async {
-                    final value = await pickOption(
-                      context,
-                      title: '控制栏位置',
-                      subtitle: '点击屏幕边缘的小胶囊，呼出竖向播放控制栏',
-                      value: prefs.railSide,
-                      options: {RailSide.right: '右侧', RailSide.left: '左侧'},
-                    );
-                    if (value != null) {
-                      app.setPreferences(
-                        app.preferences.copyWith(railSide: value),
-                      );
-                    }
-                  },
-                ),
-                _row(
-                  Icons.tune_rounded,
-                  '手势灵敏度',
-                  value: sensitivities[prefs.sensitivity],
-                  onTap: () async {
-                    final value = await pickOption(
-                      context,
-                      title: '手势灵敏度',
-                      subtitle: '低灵敏度需要滑动更远，适合减少误触',
-                      value: prefs.sensitivity,
-                      options: sensitivities,
-                    );
-                    if (value != null) {
-                      app.setPreferences(
-                        app.preferences.copyWith(sensitivity: value),
-                      );
-                    }
-                  },
-                ),
-                _toggle(
-                  Icons.vibration_rounded,
-                  '触感反馈',
-                  prefs.haptics,
-                  (v) => app.setPreferences(prefs.copyWith(haptics: v)),
-                ),
-                _row(
-                  Icons.touch_app_outlined,
-                  '手势操作说明',
-                  onTap: () => showReelSheet<void>(
-                    context,
-                    builder: (context) => const SheetFrame(
-                      title: '手势操作说明',
-                      child: GestureGuide(),
+              if (isWindowsDesktop)
+                _group('播放 · 桌面控制', [
+                  _toggle(
+                    Icons.minimize_rounded,
+                    '最小化时暂停',
+                    prefs.pauseWhenMinimized,
+                    (value) => app.setPreferences(
+                      prefs.copyWith(pauseWhenMinimized: value),
                     ),
                   ),
-                ),
-              ]),
+                  _row(
+                    Icons.keyboard_outlined,
+                    '鼠标与快捷键',
+                    onTap: () => showReelSheet<void>(
+                      context,
+                      builder: (_) => const SheetFrame(
+                        title: '鼠标与快捷键',
+                        child: DesktopShortcutGuide(),
+                      ),
+                    ),
+                  ),
+                ]),
+              if (!isWindowsDesktop)
+                _group('播放 · 手势与控制', [
+                  _row(
+                    Icons.view_sidebar_outlined,
+                    '控制栏位置',
+                    value: prefs.railSide == RailSide.right ? '右侧' : '左侧',
+                    onTap: () async {
+                      final value = await pickOption(
+                        context,
+                        title: '控制栏位置',
+                        subtitle: '点击屏幕边缘的小胶囊，呼出竖向播放控制栏',
+                        value: prefs.railSide,
+                        options: {RailSide.right: '右侧', RailSide.left: '左侧'},
+                      );
+                      if (value != null) {
+                        app.setPreferences(
+                          app.preferences.copyWith(railSide: value),
+                        );
+                      }
+                    },
+                  ),
+                  _row(
+                    Icons.tune_rounded,
+                    '手势灵敏度',
+                    value: sensitivities[prefs.sensitivity],
+                    onTap: () async {
+                      final value = await pickOption(
+                        context,
+                        title: '手势灵敏度',
+                        subtitle: '低灵敏度需要滑动更远，适合减少误触',
+                        value: prefs.sensitivity,
+                        options: sensitivities,
+                      );
+                      if (value != null) {
+                        app.setPreferences(
+                          app.preferences.copyWith(sensitivity: value),
+                        );
+                      }
+                    },
+                  ),
+                  _toggle(
+                    Icons.vibration_rounded,
+                    '触感反馈',
+                    prefs.haptics,
+                    (v) => app.setPreferences(prefs.copyWith(haptics: v)),
+                  ),
+                  _row(
+                    Icons.touch_app_outlined,
+                    '手势操作说明',
+                    onTap: () => showReelSheet<void>(
+                      context,
+                      builder: (context) => const SheetFrame(
+                        title: '手势操作说明',
+                        child: GestureGuide(),
+                      ),
+                    ),
+                  ),
+                ]),
               _group('剧库与存储', [
                 ListenableBuilder(
                   listenable: app.repository,
@@ -225,15 +254,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ]),
               _group('关于', [
-                _row(Icons.info_outline_rounded, '版本', value: '0.1.0 (1)'),
+                FutureBuilder<PackageInfo?>(
+                  future: _packageInfo,
+                  builder: (context, snapshot) => _row(
+                    Icons.info_outline_rounded,
+                    '版本',
+                    value: snapshot.data == null
+                        ? '—'
+                        : '${snapshot.data!.version} (${snapshot.data!.buildNumber})',
+                  ),
+                ),
                 _row(
                   Icons.article_outlined,
                   '开源许可',
-                  onTap: () => showLicensePage(
-                    context: context,
-                    applicationName: 'MiniReel',
-                    applicationVersion: '0.1.0',
-                  ),
+                  onTap: () async {
+                    final info = await _packageInfo;
+                    if (!context.mounted) return;
+                    showLicensePage(
+                      context: context,
+                      applicationName: 'MiniReel',
+                      applicationVersion: info?.version,
+                    );
+                  },
                 ),
               ]),
               const SizedBox(height: 8),

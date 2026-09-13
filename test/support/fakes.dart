@@ -176,6 +176,7 @@ class FakeEngine implements PlaybackEngine {
   final opened = <String>[];
   final starts = <Duration>[];
   final rates = <double>[];
+  final volumes = <double>[];
   bool disposed = false;
   Completer<void>? openGate;
   @override
@@ -215,7 +216,10 @@ class FakeEngine implements PlaybackEngine {
   }
 
   @override
-  Future<void> setVolume(double volume) async {}
+  Future<void> setVolume(double volume) async {
+    volumes.add(volume);
+  }
+
   void tick(int seconds) {
     state.value = state.value.copyWith(position: Duration(seconds: seconds));
   }

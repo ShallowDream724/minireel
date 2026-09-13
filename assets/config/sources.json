@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "sources": {
+    "hongguo": {
+      "enabled": true,
+      "baseUrl": "https://hongguoduanju.com",
+      "playbackEndpoint": "https://djapi.999888456.xyz/api/hongguo/play",
+      "referer": "https://hongguoduanju.com/",
+      "mediaReferer": "https://novel.snssdk.com/",
+      "maxPages": 20,
+      "pageSize": 24,
+      "timeoutSeconds": 12,
+      "retries": 3
+    }
+  }
+}

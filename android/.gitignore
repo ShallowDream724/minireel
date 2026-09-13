@@ -1,0 +1,13 @@
+# Gradle wrapper scripts and JAR are intentionally version-controlled.
+/.gradle/
+/.kotlin/
+/captures/
+/local.properties
+/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java
+.cxx/
+.externalNativeBuild/
+
+# Local signing material
+key.properties
+**/*.keystore
+**/*.jks

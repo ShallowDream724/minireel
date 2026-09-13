@@ -1,0 +1,83 @@
+# Flutter / Dart generated state
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub/
+.pub-cache/
+build/
+coverage/
+doc/api/
+flutter_*.png
+app.*.symbols
+app.*.map.json
+
+# Android machine-specific files and native build caches
+.gradle/
+.kotlin/
+.cxx/
+.externalNativeBuild/
+/android/local.properties
+/android/captures/
+/android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java
+
+# Signing material and local overrides (the bundled source config is tracked)
+key.properties
+*.jks
+*.keystore
+*.p12
+*.pfx
+.env
+.env.*
+!.env.example
+/config/*.local.json
+/assets/config/*.local.json
+
+# Future Windows runner: generated integration files only
+/windows/flutter/ephemeral/
+/windows/flutter/generated_plugin_registrant.cc
+/windows/flutter/generated_plugin_registrant.h
+/windows/flutter/generated_plugins.cmake
+
+# Editor / local agent settings
+.idea/
+.vscode/
+.codex/
+.agents/
+*.iml
+*.ipr
+*.iws
+
+# Operating system and temporary files
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.log
+*.pyc
+__pycache__/
+*.swp
+*.swo
+*~
+
+# Local diagnostics, exported screenshots and package outputs
+/.tmp/
+/output/
+/artifacts/
+*.apk
+*.aab
+*.apks
+
+# Local reference projects; not dependencies of the Flutter application
+/api-example/
+/ui.ux-example/
+/docs/01_现有项目_API与Provider分析.md
+/docs/02_Flutter_Dart移动端重写设计.md
+/docs/03_source.example.json
+
+# Generated JavaScript dependencies, if reference tools are used locally
+node_modules/
+.vite/
+
+# Intentionally tracked: pubspec.lock, .metadata, assets/config/sources.json,
+# all Android icon/splash resources, gradlew, gradlew.bat, gradle-wrapper.jar,
+# gradle-wrapper.properties, test fixtures and future .github/workflows/ files.

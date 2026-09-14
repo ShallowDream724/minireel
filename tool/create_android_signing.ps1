@@ -33,7 +33,7 @@ try {
     $encodedKeystore = [Convert]::ToBase64String([IO.File]::ReadAllBytes($keystoreFile))
     $lines = @(
         'MiniReel Android release signing - GitHub Repository Secrets',
-        'https://github.com/WEP-56/minireel/settings/secrets/actions',
+        'https://github.com/Minireel/minireel/settings/secrets/actions',
         '',
         'Create the following four repository secrets. Copy only the value after the first =.',
         '',

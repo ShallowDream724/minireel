@@ -23,7 +23,7 @@ Windows x64 构建需要 Windows 10/11、Visual Studio 2022 或更新版本，�
 ## 获取与运行
 
 ```sh
-git clone https://github.com/WEP-56/minireel.git
+git clone https://github.com/Minireel/minireel.git
 cd minireel
 flutter pub get --enforce-lockfile
 flutter devices

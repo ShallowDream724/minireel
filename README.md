@@ -4,8 +4,8 @@
 <h1 align="center">MiniReel</h1>
 <p align="center">好故事，随时开场。</p>
 <p align="center">
-  <a href="https://github.com/WEP-56/minireel/releases">获取应用</a> ·
-  <a href="https://github.com/WEP-56/minireel/issues">反馈问题</a>
+  <a href="https://github.com/Minireel/minireel/releases">获取应用</a> ·
+  <a href="https://github.com/Minireel/minireel/issues">反馈问题</a>
 </p>
 
 MiniReel 是一款支持 Android 和 Windows 的短剧播放器。找一部感兴趣的短剧，用顺手的操作观看；喜欢就收藏，下次打开接着看。
@@ -31,7 +31,7 @@ MiniReel 是一款支持 Android 和 Windows 的短剧播放器。找一部感�
 
 ## 获取应用
 
-从 [Releases](https://github.com/WEP-56/minireel/releases) 获取安装包：Windows 下载 `windows-x64-setup.exe` 安装程序，Android 按设备架构下载 APK（多数近年手机使用 `arm64-v8a`）。带 beta、rc 的版本属于预发布版。想自行构建可查看[构建说明](docs/BUILDING.md)。
+从 [Releases](https://github.com/Minireel/minireel/releases) 获取安装包：Windows 下载 `windows-x64-setup.exe` 安装程序，Android 按设备架构下载 APK（多数近年手机使用 `arm64-v8a`）。带 beta、rc 的版本属于预发布版。想自行构建可查看[构建说明](docs/BUILDING.md)。
 
 | 平台 | 支持情况 |
 | --- | --- |
@@ -117,7 +117,7 @@ MiniReel 是一款支持 Android 和 Windows 的短剧播放器。找一部感�
 
 ## 反馈与参与
 
-欢迎通过 [Issues](https://github.com/WEP-56/minireel/issues) 反馈问题或提出建议。描述问题时，带上设备型号、Android 版本、应用版本和复现步骤，会更容易定位。
+欢迎通过 [Issues](https://github.com/Minireel/minireel/issues) 反馈问题或提出建议。描述问题时，带上设备型号、Android 版本、应用版本和复现步骤，会更容易定位。
 
 希望参与开发或自行打包，请阅读[开发与构建说明](docs/BUILDING.md)。
 

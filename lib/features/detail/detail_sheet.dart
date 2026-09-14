@@ -8,6 +8,7 @@ import '../../app/theme.dart';
 import '../../core/errors/app_exception.dart';
 import '../../domain/models/drama.dart';
 import '../shared/widgets.dart';
+import '../shared/drama_metadata.dart';
 
 Future<void> showDramaDetail(
   BuildContext context,
@@ -170,6 +171,21 @@ class _DetailSheetState extends State<_DetailSheet> {
             ],
           ),
           const SizedBox(height: 19),
+          if (dramaMetadata(drama).isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 14),
+              child: Wrap(
+                spacing: 12,
+                runSpacing: 6,
+                children: [
+                  for (final text in dramaMetadata(drama))
+                    Text(
+                      text,
+                      style: TextStyle(color: context.muted, fontSize: 12),
+                    ),
+                ],
+              ),
+            ),
           Text(
             drama.intro.isEmpty ? '精彩故事，等你开启。' : drama.intro,
             style: TextStyle(fontSize: 13.5, color: context.muted, height: 1.8),

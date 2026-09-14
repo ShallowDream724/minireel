@@ -28,6 +28,10 @@ final class Drama {
     this.tags = const [],
     this.channel = DramaChannel.real,
     this.releaseStatus = ReleaseStatus.unknown,
+    this.score,
+    this.views,
+    this.heat,
+    this.onlineDate,
   });
 
   final String id;
@@ -42,6 +46,37 @@ final class Drama {
   final List<String> tags;
   final DramaChannel channel;
   final ReleaseStatus releaseStatus;
+  final double? score;
+  final int? views;
+  final double? heat;
+  final DateTime? onlineDate;
+
+  /// Sparse search/rank records must not erase richer cached metadata.
+  Drama mergeMissing(Drama? previous, {bool preserveChannel = false}) {
+    if (previous == null || previous.id != id) return this;
+    return Drama(
+      id: id,
+      source: source,
+      sourceId: sourceId,
+      title: title.isEmpty || title == sourceId ? previous.title : title,
+      coverUrl: coverUrl.isEmpty ? previous.coverUrl : coverUrl,
+      intro: intro.isEmpty ? previous.intro : intro,
+      category: category.isEmpty || category == channel.label
+          ? previous.category
+          : category,
+      episodeCount: episodeCount > 0 ? episodeCount : previous.episodeCount,
+      remark: remark.isEmpty ? previous.remark : remark,
+      tags: tags.isEmpty ? previous.tags : tags,
+      channel: preserveChannel ? previous.channel : channel,
+      releaseStatus: releaseStatus == ReleaseStatus.unknown
+          ? previous.releaseStatus
+          : releaseStatus,
+      score: score ?? previous.score,
+      views: views ?? previous.views,
+      heat: heat ?? previous.heat,
+      onlineDate: onlineDate ?? previous.onlineDate,
+    );
+  }
 
   String get episodeLabel => remark.isNotEmpty
       ? remark
@@ -77,6 +112,10 @@ final class Drama {
     'tags': tags,
     'channel': channel.name,
     'releaseStatus': releaseStatus.name,
+    'score': score,
+    'views': views,
+    'heat': heat,
+    'onlineDate': onlineDate?.toIso8601String(),
   };
 
   factory Drama.fromJson(Map<String, dynamic> json) => Drama(
@@ -95,6 +134,10 @@ final class Drama {
       (value) => value.name == json['releaseStatus'],
       orElse: () => ReleaseStatus.unknown,
     ),
+    score: (json['score'] as num?)?.toDouble(),
+    views: (json['views'] as num?)?.toInt(),
+    heat: (json['heat'] as num?)?.toDouble(),
+    onlineDate: DateTime.tryParse(json['onlineDate'] as String? ?? ''),
   );
 }
 

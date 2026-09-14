@@ -5,10 +5,12 @@ import 'package:flutter/foundation.dart';
 
 import '../app/app_controller.dart';
 import '../core/errors/app_exception.dart';
+import '../core/network/app_http_client.dart';
 import '../domain/models/drama.dart';
 import '../domain/models/playback_source.dart';
 import '../domain/models/watch_record.dart';
 import 'playback_engine.dart';
+import 'next_episode_prefetch.dart';
 
 /// Owns one viewing session. UI gestures express intent; this controller owns
 /// cancellation, playback sequencing, progress, pause reasons and auto-next.
@@ -36,6 +38,7 @@ final class PlaybackSession extends ChangeNotifier {
   String currentQuality = '原画';
   bool loadingDetail = true;
   bool resolving = false;
+  bool showLoading = false;
   String? error;
   String? loadingMessage;
   bool temporaryBoost = false;
@@ -53,17 +56,26 @@ final class PlaybackSession extends ChangeNotifier {
   CancelToken? _request;
   Timer? _recordTimer;
   Timer? _loadTimer;
+  Timer? _prefetchTimer;
+  Timer? _loadingIndicatorTimer;
+  final _prefetch = NextEpisodePrefetch(ttl: const Duration(minutes: 3));
+  bool _usedPrefetch = false;
+  int? _prefetchGeneration;
+  DateTime? _preloadAfter;
   final Set<String> _pauseReasons = {};
   bool _wantPlaying = true;
   bool _acceptEvents = false;
   bool _completedHandled = false;
   bool _disposed = false;
   bool _usingFallback = false;
+  PlaybackRoute _route = PlaybackRoute.app;
+  int _maxRecoverySteps = 2;
   int _recoveryStep = 0;
   Duration _requestedStart = Duration.zero;
   Future<void> _commands = Future.value();
 
   Future<void> initialize({int? initialEpisode}) async {
+    trimPreload();
     final generation = ++_generation;
     _request?.cancel();
     final token = _request = CancelToken();
@@ -111,6 +123,7 @@ final class PlaybackSession extends ChangeNotifier {
     int index, {
     Duration resume = Duration.zero,
     bool fallbackOnly = false,
+    PlaybackRoute? startRoute,
     int recoveryStep = 0,
     String? quality,
     String? message,
@@ -122,10 +135,15 @@ final class PlaybackSession extends ChangeNotifier {
     _request?.cancel();
     final token = _request = CancelToken();
     _loadTimer?.cancel();
+    _prefetchTimer?.cancel();
     _acceptEvents = false;
     currentIndex = index;
     if (!preserveIntent) _wantPlaying = true;
     _usingFallback = fallbackOnly;
+    _usedPrefetch = false;
+    _route =
+        startRoute ??
+        (fallbackOnly ? PlaybackRoute.fallback : PlaybackRoute.app);
     _recoveryStep = recoveryStep;
     _requestedStart = resume;
     temporaryBoost = false;
@@ -139,21 +157,35 @@ final class PlaybackSession extends ChangeNotifier {
     try {
       await engine.stop();
       if (!_current(generation)) return;
-      final resolved = await app.repository.resolve(
-        drama,
-        episodes[index],
-        cancelToken: token,
-        fallbackOnly: fallbackOnly,
-      );
+      final cached = startRoute == null && !fallbackOnly
+          ? await _prefetch.take(episodes[index].id, token)
+          : null;
+      if (!_current(generation)) return;
+      if (cached == null) trimPreload();
+      _usedPrefetch = cached != null;
+      final resolved =
+          cached ??
+          await app.repository.resolve(
+            drama,
+            episodes[index],
+            cancelToken: token,
+            fallbackOnly: fallbackOnly,
+            startRoute: _route,
+          );
       if (!_current(generation)) return;
       options = resolved;
       final source = resolved.select(quality ?? app.preferences.quality);
+      _route = source.route;
+      if (recoveryStep == 0) {
+        _maxRecoverySteps = _route == PlaybackRoute.app ? 3 : 2;
+      }
       _usingFallback = fallbackOnly || source.route == PlaybackRoute.fallback;
       currentQuality = source.quality;
       await engine.open(
         source,
         start: resume,
         isCurrent: () => _current(generation),
+        episodeId: episodes[index].id,
       );
       if (!_current(generation)) return;
       await engine.setRate(rate);
@@ -166,13 +198,22 @@ final class PlaybackSession extends ChangeNotifier {
         return;
       }
       await _syncIntent();
+      _schedulePrefetch(generation);
       _notify();
     } on DioException catch (error) {
       if (!CancelToken.isCancel(error) && _current(generation)) {
         _fail('网络连接失败，请重试');
       }
     } on AppException catch (error) {
-      if (_current(generation)) _fail(error.message);
+      if (_current(generation)) {
+        if (options != null) {
+          resolving = false;
+          _acceptEvents = true;
+          _recoverOrFail(error.message);
+        } else {
+          _fail(error.message);
+        }
+      }
     } on Exception {
       if (_current(generation)) {
         if (options != null) {
@@ -194,6 +235,7 @@ final class PlaybackSession extends ChangeNotifier {
           currentIndex,
           resume: _recoveryPosition,
           fallbackOnly: _usingFallback,
+          startRoute: _route,
           preserveIntent: true,
         );
 
@@ -205,7 +247,25 @@ final class PlaybackSession extends ChangeNotifier {
     _loadTimer?.cancel();
     saveProgress();
     final resume = _recoveryPosition;
-    if (_recoveryStep >= 2) {
+    // A prefetched URL can expire before its nominal TTL: retry this route
+    // once with fresh resolution before advancing to the next source.
+    if (_usedPrefetch) {
+      _usedPrefetch = false;
+      _acceptEvents = false;
+      unawaited(
+        _loadEpisode(
+          currentIndex,
+          resume: resume,
+          startRoute: _route,
+          fallbackOnly: _usingFallback,
+          recoveryStep: _recoveryStep,
+          message: '正在重新获取播放地址…',
+          preserveIntent: true,
+        ),
+      );
+      return;
+    }
+    if (_recoveryStep >= _maxRecoverySteps) {
       _acceptEvents = false;
       _fail(message);
       // Stop the demuxer as well: pausing alone can leave HTTP reconnects alive.
@@ -232,7 +292,10 @@ final class PlaybackSession extends ChangeNotifier {
       _loadEpisode(
         currentIndex,
         resume: resume,
-        fallbackOnly: true,
+        fallbackOnly: _route != PlaybackRoute.app,
+        startRoute: _route == PlaybackRoute.app
+            ? PlaybackRoute.primary
+            : PlaybackRoute.fallback,
         recoveryStep: _recoveryStep + 1,
         quality: nextQuality,
         message: notice,
@@ -249,6 +312,7 @@ final class PlaybackSession extends ChangeNotifier {
         !_acceptEvents ||
         !_wantPlaying ||
         _pauseReasons.isNotEmpty ||
+        (_preloadAfter != null && DateTime.now().isBefore(_preloadAfter!)) ||
         _loadTimer?.isActive == true) {
       return;
     }
@@ -263,6 +327,66 @@ final class PlaybackSession extends ChangeNotifier {
         _recoverOrFail('视频加载较慢，请检查网络后重试');
       }
     });
+  }
+
+  void _schedulePrefetch(int generation) {
+    if (!canNext ||
+        !_current(generation) ||
+        !_wantPlaying ||
+        _pauseReasons.isNotEmpty ||
+        (_prefetchGeneration == generation && !_prefetch.expired) ||
+        _prefetchTimer?.isActive == true) {
+      return;
+    }
+    final next = episodes[currentIndex + 1];
+    _prefetchTimer = Timer(const Duration(milliseconds: 800), () {
+      if (!_current(generation) ||
+          !ready ||
+          !playing ||
+          buffering ||
+          !_wantPlaying ||
+          _pauseReasons.isNotEmpty) {
+        return;
+      }
+      _prefetchGeneration = generation;
+      final preloader = engine;
+      if (preloader is PreloadingPlaybackEngine) {
+        (preloader as PreloadingPlaybackEngine).discardPreload();
+      }
+      _prefetch.start(next.id, (token) async {
+        final resolved = await app.repository.resolve(
+          drama,
+          next,
+          cancelToken: token,
+        );
+        token.throwIfCancellationRequested();
+        if (!_disposed && preloader is PreloadingPlaybackEngine) {
+          unawaited(
+            (preloader as PreloadingPlaybackEngine)
+                .preload(
+                  resolved.select(app.preferences.quality),
+                  episodeId: next.id,
+                )
+                .catchError((Object _) {}),
+          );
+        }
+        return resolved;
+      });
+    });
+  }
+
+  /// Release speculative media on backgrounding, memory pressure or a jump.
+  void trimPreload({Duration cooldown = Duration.zero}) {
+    if (cooldown > Duration.zero) {
+      _preloadAfter = DateTime.now().add(cooldown);
+    }
+    _prefetchTimer?.cancel();
+    _prefetch.clear();
+    _prefetchGeneration = null;
+    final preloader = engine;
+    if (preloader is PreloadingPlaybackEngine) {
+      (preloader as PreloadingPlaybackEngine).discardPreload();
+    }
   }
 
   void togglePlay() {
@@ -280,6 +404,10 @@ final class PlaybackSession extends ChangeNotifier {
   void hold(String reason) {
     _pauseReasons.add(reason);
     _loadTimer?.cancel();
+    _prefetchTimer?.cancel();
+    if (reason == 'background' || reason == 'minimized' || reason == 'system') {
+      trimPreload();
+    }
     saveProgress();
     unawaited(_syncIntent());
   }
@@ -327,6 +455,7 @@ final class PlaybackSession extends ChangeNotifier {
   }
 
   Future<void> setQuality(String quality) async {
+    trimPreload();
     app.setPreferences(app.preferences.copyWith(quality: quality));
     if (options == null || options!.select(quality).quality == currentQuality) {
       return;
@@ -339,6 +468,7 @@ final class PlaybackSession extends ChangeNotifier {
       currentIndex,
       resume: resume,
       fallbackOnly: _usingFallback,
+      startRoute: _route,
       quality: quality,
       preserveIntent: true,
     );
@@ -353,7 +483,11 @@ final class PlaybackSession extends ChangeNotifier {
       _recoverOrFail(snapshot.error!);
       return;
     }
-    if (snapshot.buffering) _armLoadTimeout();
+    if (snapshot.buffering) {
+      _armLoadTimeout();
+      if (_prefetchGeneration == _generation) trimPreload();
+    }
+    if (playing && !buffering) _schedulePrefetch(_generation);
     if (snapshot.completed && !_completedHandled && !resolving) {
       _completedHandled = true;
       saveProgress();
@@ -391,6 +525,7 @@ final class PlaybackSession extends ChangeNotifier {
   bool _current(int generation) => !_disposed && generation == _generation;
   void _fail(String message) {
     if (_disposed) return;
+    trimPreload();
     loadingDetail = false;
     resolving = false;
     error = message;
@@ -400,7 +535,23 @@ final class PlaybackSession extends ChangeNotifier {
   }
 
   void _notify() {
-    if (!_disposed) notifyListeners();
+    if (_disposed) return;
+    if (error == null && (loadingDetail || buffering)) {
+      if (!showLoading && _loadingIndicatorTimer == null) {
+        _loadingIndicatorTimer = Timer(const Duration(milliseconds: 180), () {
+          _loadingIndicatorTimer = null;
+          if (!_disposed && error == null && (loadingDetail || buffering)) {
+            showLoading = true;
+            notifyListeners();
+          }
+        });
+      }
+    } else {
+      _loadingIndicatorTimer?.cancel();
+      _loadingIndicatorTimer = null;
+      showLoading = false;
+    }
+    notifyListeners();
   }
 
   Future<void> close() async {
@@ -411,6 +562,8 @@ final class PlaybackSession extends ChangeNotifier {
     _request?.cancel();
     _recordTimer?.cancel();
     _loadTimer?.cancel();
+    _loadingIndicatorTimer?.cancel();
+    trimPreload();
     engine.state.removeListener(_onEngine);
     options = null;
     await _commands;

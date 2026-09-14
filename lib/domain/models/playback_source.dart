@@ -2,7 +2,7 @@ import 'dart:typed_data';
 
 enum PlaybackKind { direct, hls, cenc }
 
-enum PlaybackRoute { primary, fallback }
+enum PlaybackRoute { app, primary, fallback }
 
 /// Ephemeral data. Deliberately has no JSON/storage representation.
 final class PlaybackSource {

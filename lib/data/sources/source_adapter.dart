@@ -2,7 +2,46 @@ import 'package:dio/dio.dart';
 
 import '../../core/errors/app_exception.dart';
 import '../../domain/models/drama.dart';
+import '../../domain/models/catalog_page.dart';
 import '../../domain/models/playback_source.dart';
+import '../../domain/models/discovery.dart';
+
+abstract interface class RemoteSearchSource {
+  Future<SearchResult> searchRemote(String keyword, {CancelToken? cancelToken});
+}
+
+abstract interface class RankingSource {
+  Future<RankingPage> getRanking(
+    RankingType type, {
+    int page = 1,
+    bool refresh = false,
+    CancelToken? cancelToken,
+  });
+}
+
+abstract interface class SourceCacheControl {
+  void clearTransientCache();
+}
+
+abstract interface class CursorCatalogSource {
+  List<DramaChannel> get catalogChannels;
+  Future<CatalogPage> loadCatalog(
+    DramaChannel channel, {
+    CatalogCursor cursor = const CatalogCursor(),
+    bool refresh = false,
+    Set<String> knownIds = const {},
+    CancelToken? cancelToken,
+  });
+}
+
+abstract interface class RoutedPlaybackSource {
+  Future<PlaybackOptions> resolveFrom(
+    Drama drama,
+    Episode episode, {
+    PlaybackRoute start = PlaybackRoute.app,
+    CancelToken? cancelToken,
+  });
+}
 
 abstract interface class DramaSourceAdapter {
   String get id;

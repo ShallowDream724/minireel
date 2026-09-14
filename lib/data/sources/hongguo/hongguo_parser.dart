@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import '../../../core/errors/app_exception.dart';
 import '../../../domain/models/drama.dart';
+import 'hongguo_metadata.dart';
 
 final class HongguoParser {
   const HongguoParser();
@@ -79,6 +80,7 @@ final class HongguoParser {
     final video = objectMap(map['video_data']);
     final data = {...map, ...video};
     final sourceId = field(data, [
+      'series_id_str',
       'series_id',
       'keyword',
     ], fallback?.sourceId ?? '');
@@ -96,10 +98,14 @@ final class HongguoParser {
       title: field(data, [
         'series_title',
         'series_name',
+        'title',
         'name',
       ], fallback?.title ?? sourceId),
-      coverUrl: field(data, ['series_cover'], fallback?.coverUrl ?? ''),
-      intro: field(data, ['series_intro'], fallback?.intro ?? ''),
+      coverUrl: field(data, [
+        'series_cover',
+        'cover',
+      ], fallback?.coverUrl ?? ''),
+      intro: field(data, ['series_intro', 'video_desc'], fallback?.intro ?? ''),
       category: field(data, [
         'category_name',
         'categoryName',
@@ -109,11 +115,30 @@ final class HongguoParser {
       remark: remark,
       tags: tags.isNotEmpty ? tags : fallback?.tags ?? const [],
       channel: channel,
-      releaseStatus: remark.contains('完结') || remark.startsWith('全')
+      releaseStatus: field(data, ['series_status']) == '1'
+          ? ReleaseStatus.completed
+          : field(data, ['series_status']) == '0'
+          ? ReleaseStatus.ongoing
+          : remark.contains('完结') || remark.startsWith('全')
           ? ReleaseStatus.completed
           : remark.contains('更新') || remark.contains('连载')
           ? ReleaseStatus.ongoing
           : fallback?.releaseStatus ?? ReleaseStatus.unknown,
+      score: hongguoNumber(field(data, ['score'])) ?? fallback?.score,
+      views:
+          hongguoNumber(
+            field(data, ['series_play_cnt', 'play_cnt']),
+          )?.toInt() ??
+          fallback?.views,
+      heat:
+          hongguoNumber(
+            field(objectMap(data['hot_score_data']), [
+              'score',
+            ], field(data, ['hot_score'])),
+          ) ??
+          hongguoNumber(field(objectMap(data['hot_score_data']), ['text'])) ??
+          fallback?.heat,
+      onlineDate: hongguoOnlineDate(data) ?? fallback?.onlineDate,
     );
   }
 
@@ -127,12 +152,15 @@ final class HongguoParser {
     }
     final vids = anyList(data['vid_list']);
     final episodes = <Episode>[];
+    final seen = <String>{};
     for (var i = 0; i < vids.length; i++) {
       final value = vids[i];
       final vid = value is Map
           ? field(objectMap(value), ['vid', 'video_id', 'id'])
           : value?.toString().trim() ?? '';
-      if (vid.isEmpty) continue;
+      if (!RegExp(r'^[0-9]{1,32}$').hasMatch(vid) || !seen.add(vid)) {
+        throw const AppException('网页分集信息不完整，请稍后重试');
+      }
       episodes.add(
         Episode(
           id: '${drama.id}:$vid',
@@ -143,6 +171,9 @@ final class HongguoParser {
       );
     }
     if (episodes.isEmpty) throw const AppException('这部短剧暂时没有可播放的分集');
+    if ((int.tryParse(field(data, ['episode_cnt'])) ?? 0) > episodes.length) {
+      throw const AppException('网页未返回完整分集，请稍后重试');
+    }
     return DramaDetail(
       drama: dramaFrom(
         {...data, 'episode_cnt': episodes.length},

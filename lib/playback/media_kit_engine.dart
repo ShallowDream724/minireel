@@ -1,16 +1,35 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart' show WidgetsBinding;
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
 import '../core/errors/app_exception.dart';
 import '../domain/models/playback_source.dart';
+import 'buffered_playback_engine.dart';
 import 'playback_engine.dart';
 import 'native_error_guard.dart';
 
-final class MediaKitEngine implements PlaybackEngine {
-  MediaKitEngine() {
+final class MediaKitEngine extends BufferedPlaybackEngine {
+  MediaKitEngine() : super((preloading) => _MediaKitPlayer(preloading));
+
+  VideoController get video => (activeEngine as _MediaKitPlayer).video;
+  Player get player => (activeEngine as _MediaKitPlayer).player;
+
+  VideoController? videoForEpisode(String episodeId) =>
+      (engineForEpisode(episodeId) as _MediaKitPlayer?)?.video;
+}
+
+final class _MediaKitPlayer implements PlaybackEngine {
+  _MediaKitPlayer(this._preloading)
+    : player = Player(
+        configuration: PlayerConfiguration(
+          title: 'MiniReel',
+          bufferSize: _preloading ? 8 * 1024 * 1024 : 32 * 1024 * 1024,
+          muted: _preloading,
+        ),
+      ) {
     _errors = NativeErrorGuard(
       grace: const Duration(seconds: 6),
       onFailure: () => _emit(
@@ -22,6 +41,7 @@ final class MediaKitEngine implements PlaybackEngine {
       ),
     );
     video = VideoController(player);
+    WidgetsBinding.instance.scheduleFrame();
     _subscriptions.addAll([
       player.stream.position.listen((v) {
         _errors.progress(v);
@@ -46,12 +66,8 @@ final class MediaKitEngine implements PlaybackEngine {
     ]);
   }
 
-  final Player player = Player(
-    configuration: const PlayerConfiguration(
-      title: 'MiniReel',
-      bufferSize: 32 * 1024 * 1024,
-    ),
-  );
+  final Player player;
+  bool _preloading;
   late final VideoController video;
   late final NativeErrorGuard _errors;
   final List<StreamSubscription<dynamic>> _subscriptions = [];
@@ -78,6 +94,7 @@ final class MediaKitEngine implements PlaybackEngine {
     PlaybackSource source, {
     required Duration start,
     required bool Function() isCurrent,
+    String? episodeId,
   }) => _serialize(() async {
     bool valid() => !_disposed && isCurrent();
     if (!valid()) return;
@@ -103,6 +120,17 @@ final class MediaKitEngine implements PlaybackEngine {
         ].join(','),
       );
       await native.setProperty('network-timeout', '20');
+      await native.setProperty('cache', 'yes');
+      await native.setProperty('cache-on-disk', 'no');
+      await native.setProperty(
+        'demuxer-max-back-bytes',
+        _preloading ? '0' : '${8 * 1024 * 1024}',
+      );
+      await native.setProperty('cache-secs', _preloading ? '12' : '20');
+      await native.setProperty(
+        'demuxer-readahead-secs',
+        _preloading ? '12' : '20',
+      );
     } else if (source.kind == PlaybackKind.cenc) {
       throw const AppException('当前设备暂不支持这个视频格式');
     }
@@ -132,6 +160,20 @@ final class MediaKitEngine implements PlaybackEngine {
 
   @override
   Future<void> setPlaying(bool playing) async {
+    if (_disposed) return;
+    if (playing && _preloading) {
+      final native = player.platform;
+      if (native is NativePlayer) {
+        await native.setProperty('demuxer-max-bytes', '${32 * 1024 * 1024}');
+        await native.setProperty(
+          'demuxer-max-back-bytes',
+          '${8 * 1024 * 1024}',
+        );
+        await native.setProperty('cache-secs', '20');
+        await native.setProperty('demuxer-readahead-secs', '20');
+      }
+      _preloading = false;
+    }
     if (_disposed) return;
     _errors.setPlaying(playing);
     if (playing) {

@@ -266,7 +266,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 _row(
                   Icons.article_outlined,
-                  '开源许可',
+                  '使用许可',
+                  value: '仅限非商业用途',
                   onTap: () async {
                     final info = await _packageInfo;
                     if (!context.mounted) return;
@@ -274,6 +275,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       context: context,
                       applicationName: 'MiniReel',
                       applicationVersion: info?.version,
+                      applicationLegalese:
+                          'MiniReel · PolyForm Noncommercial 1.0.0\n'
+                          '仅限许可条款允许的非商业用途。\n'
+                          '第三方组件适用各自的许可证。',
                     );
                   },
                 ),
@@ -438,8 +443,8 @@ class GestureGuide extends StatelessWidget {
                   ('单击屏幕', '显示 / 隐藏控制栏'),
                   ('左右滑动', '微调进度，松手跳转'),
                   ('长按屏幕', '临时 2 倍速，松手恢复'),
-                  ('左侧上下滑', '调节屏幕亮度'),
-                  ('右侧上下滑', '调节播放音量'),
+                  ('亮度调节', '使用播放菜单中的亮度滑块'),
+                  ('音量调节', '使用系统音量键或播放菜单滑块'),
                   ('底部控制栏', '播放、选集、倍速、锁定和切回竖屏'),
                   ('系统返回', '先退出横屏，再返回剧库'),
                 ]
@@ -447,10 +452,9 @@ class GestureGuide extends StatelessWidget {
                   ('上半区长按', '呼出播放菜单，选集 / 收藏 / 倍速'),
                   ('下半区长按', '临时 2 倍速，松手恢复原倍速'),
                   ('长按后横滑', '微调播放进度，松手跳转'),
-                  ('左侧上下滑', '调节屏幕亮度'),
-                  ('右侧上下滑', '调节播放音量'),
-                  ('中部上下滑', '切换上一集 / 下一集'),
-                  ('单击屏幕', '播放 / 暂停'),
+                  ('上下滚动', '画面跟随手指，松手翻到上一集 / 下一集'),
+                  ('亮度和音量', '打开播放菜单拖动滑块调节'),
+                  ('单击屏幕', '播放 / 暂停，并显示顶部控制栏'),
                   ('侧边小胶囊', '时间与进度、横屏播放、锁定屏幕'),
                 ])
         Padding(

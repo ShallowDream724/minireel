@@ -93,6 +93,7 @@ git push origin v0.1.0
 以下文件是工程的一部分，必须保留在版本控制中：
 
 - `lib/`、`pubspec.yaml`、`pubspec.lock`、`.metadata` 和 `analysis_options.yaml`。
+- `License`：项目的 PolyForm Noncommercial 1.0.0 完整许可及 Required Notice，作为 Flutter 资源随两端应用分发；Windows 安装程序也直接读取它。
 - `assets/logo.png` 与 **`assets/config/sources.json`**。
 - `android/` 的 Manifest、Kotlin 入口、Gradle 配置、图标和启动页资源。
 - `android/gradlew`、`android/gradlew.bat`、`android/gradle/wrapper/gradle-wrapper.jar` 和对应 `.properties`。
@@ -114,11 +115,24 @@ git push origin v0.1.0
 | 参数 | 作用 |
 | --- | --- |
 | `MINIREEL_BASE_URL` | 覆盖剧库网页地址，同时调整网页 Referer |
+| `MINIREEL_APP_BASE_URL` | 覆盖原生 App API 地址 |
 | `MINIREEL_PLAYBACK_ENDPOINT` | 覆盖备用播放接口 |
 
 这些地址不等于账号凭据；未来若接入需要 token 的服务，应另外设计凭据管理。现有临时视频 URL 和每集内容密钥只在运行时内存中使用，不写入应用数据库。
 
-数据流为 `SourceAdapter → DramaRepository → PlaybackSession → media_kit`。网页直链优先，备用取流负责兜底；原生加载失败时最多自动恢复两次，并保留进度。上游没有提供有效视频地址时，会明确报告片源不可用。
+数据流为 `SourceAdapter → DramaRepository → PlaybackSession → media_kit`。红果剧库与详情优先使用 App API，失败时回退网页；播放依次尝试 App、网页和旧备用接口。实际媒体加载失败也会沿此顺序恢复并保留进度，App 路径最多自动恢复三次，网页与旧备用路径最多两次。下一集预解析命中后若媒体失效，会先额外重新解析当前路径一次，再进入上述回退流程。
+
+App 的地址、User-Agent、版本及通用参数分别由 `appBaseUrl`、`appUserAgent`、`appParameters` 和 `appHeaders` 配置。缺少 App 地址时保留网页模式。设备标识在首次请求时生成并保存在 SQLite；各分类的 App 游标与网页页码独立维护，和剧库数据一起事务写入。刷新扫描最多三页头部并保留历史续拉位置，清理剧库缓存会清除游标与详情缓存，保留设备标识、收藏和观看记录。默认 App 分类为真人剧、漫剧与 AI 剧，动漫来自网页兜底或已有缓存。
+
+P1 的联网搜索与榜单通过可选 `RemoteSearchSource`、`RankingSource` 能力接入。两者使用网页数据，缓存五分钟，并合并相同请求；搜索词限制为 1–80 字符。榜单同时解析内联与后续脚本属性中的内容，校验榜单、页码和真实名次，不补造连续排名。搜索与榜单结果合并进 SQLite 剧库，缺失字段不会抹掉已有封面、集数和元数据。
+
+评分、播放量、热度与上线日期保存在现有 JSON 数据列中，兼容旧缓存，无需改表。排序只针对已加载数据，缺失值排末尾，不启动批量详情补全。弹幕和批量元数据补全仍属 P2。
+
+播放稳定 800 毫秒后，会解析下一集并用一个暂停、静音的 media_kit 播放器预加载媒体、初始化解码器与画面。备用播放器的媒体缓冲上限为 8 MiB，预读目标为 12 秒；当前播放器前向缓冲上限为 32 MiB，回看缓冲为 8 MiB。命中时直接接替播放，不重新打开同一地址。普通媒体、HLS 和 CENC 共用原生解码链路，分别设置每集请求头和解密参数。缓存只在内存中保留，不写入媒体文件或应用数据库。
+
+只预加载下一集，不批量下载。预解析信息三分钟过期，当前集仍在播放时会更新；切画质、跳集、后台、内存压力和退出会释放失效的预加载。当前集缓冲时先取消备用加载，优先保障当前播放。预加载失败仍可正常解析、播放，命中后媒体失效则先重新解析当前路径，再沿三级链路回退。短于 180 毫秒的切换不显示加载圈。
+
+Android 竖屏使用纵向 `PageView`，画面随手指滚动，页面停稳后才切换播放；自动连播和选集会同步滚动位置。单击、长按与翻页通过 Flutter 手势识别器共同仲裁，长按识别后保持控制权，横向拖动只预览进度，松手提交。锁屏、弹层、长按拖动进度时禁用翻页。Android 横屏与 Windows 保留常规播放控件，不接入滚动切集，但共享媒体预加载。Android 两种方向均移除上下滑动调亮度、音量，亮度改用播放菜单滑块，音量使用系统音量键或菜单滑块。
 
 ## 辅助工具
 

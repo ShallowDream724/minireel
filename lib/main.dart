@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 
@@ -20,6 +21,11 @@ import 'desktop/window_chrome.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  LicenseRegistry.addLicense(() async* {
+    yield LicenseEntryWithLineBreaks([
+      'MiniReel',
+    ], await rootBundle.loadString('License'));
+  });
   if (Platform.isWindows) await DesktopWindow.instance.initialize();
   MediaKit.ensureInitialized();
   if (Platform.isAndroid) {
@@ -56,7 +62,9 @@ class _MiniReelBootstrapState extends State<MiniReelBootstrap> {
     final store = await SqliteAppStore.open();
     try {
       final repository = DramaRepository(
-        SourceRegistry([if (config.enabled) HongguoAdapter(config, http)]),
+        SourceRegistry([
+          if (config.enabled) HongguoAdapter(config, http, store: store),
+        ]),
         store,
       );
       final app = AppController(store, repository);

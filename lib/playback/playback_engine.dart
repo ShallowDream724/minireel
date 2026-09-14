@@ -45,6 +45,7 @@ abstract interface class PlaybackEngine {
     PlaybackSource source, {
     required Duration start,
     required bool Function() isCurrent,
+    String? episodeId,
   });
   Future<void> stop();
   Future<void> setPlaying(bool playing);
@@ -52,4 +53,10 @@ abstract interface class PlaybackEngine {
   Future<void> setRate(double rate);
   Future<void> setVolume(double volume);
   Future<void> dispose();
+}
+
+/// Optional native media buffering, separate from playback URL resolution.
+abstract interface class PreloadingPlaybackEngine {
+  Future<void> preload(PlaybackSource source, {required String episodeId});
+  void discardPreload();
 }

@@ -15,6 +15,10 @@ final class SourceConfig {
     this.pageSize = 24,
     this.timeoutSeconds = 12,
     this.retries = 3,
+    this.appBaseUrl,
+    this.appUserAgent = '',
+    this.appParameters = const {},
+    this.appHeaders = const {},
   });
 
   factory SourceConfig.fromJson(Map<String, dynamic> json) {
@@ -45,6 +49,10 @@ final class SourceConfig {
         60,
       ),
       retries: ((json['retries'] as num?)?.toInt() ?? 3).clamp(1, 5),
+      appBaseUrl: _appUrl(json),
+      appUserAgent: json['appUserAgent'] as String? ?? '',
+      appParameters: _stringMap(json['appParameters']),
+      appHeaders: _stringMap(json['appHeaders']),
     );
   }
 
@@ -58,6 +66,27 @@ final class SourceConfig {
   final int pageSize;
   final int timeoutSeconds;
   final int retries;
+  final Uri? appBaseUrl;
+  final String appUserAgent;
+  final Map<String, String> appParameters;
+  final Map<String, String> appHeaders;
+
+  static Uri? _appUrl(Map<String, dynamic> json) {
+    const override = String.fromEnvironment('MINIREEL_APP_BASE_URL');
+    final value = override.isNotEmpty
+        ? override
+        : json['appBaseUrl'] as String? ?? '';
+    final uri = Uri.tryParse(value);
+    return uri != null &&
+            ['http', 'https'].contains(uri.scheme) &&
+            uri.host.isNotEmpty
+        ? uri
+        : null;
+  }
+
+  static Map<String, String> _stringMap(dynamic value) => value is Map
+      ? value.map((key, value) => MapEntry(key.toString(), value.toString()))
+      : const {};
 
   Map<String, String> get headers => {
     'User-Agent': userAgent,

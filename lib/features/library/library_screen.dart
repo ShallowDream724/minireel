@@ -6,11 +6,12 @@ import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import '../../app/app_controller.dart';
 import '../../app/theme.dart';
 import '../../domain/models/drama.dart';
+import '../../domain/models/catalog_order.dart';
 import '../detail/detail_sheet.dart';
 import '../search/search_screen.dart';
+import '../rankings/rankings_screen.dart';
 import '../shared/widgets.dart';
-
-enum CatalogOrder { recommended, title, short }
+import '../shared/drama_metadata.dart';
 
 class LibraryScreen extends StatefulWidget {
   const LibraryScreen({super.key, required this.onPlay});
@@ -56,6 +57,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
       listenable: app.repository,
       builder: (context, _) {
         final repo = app.repository;
+        if (_channel != null && !repo.channels.contains(_channel)) {
+          _channel = null;
+        }
         final available = repo.catalog
             .where((drama) => _channel == null || drama.channel == _channel)
             .toList();
@@ -68,12 +72,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                       drama.episodeCount > 0 && drama.episodeCount <= 60),
             )
             .toList();
-        if (_order == CatalogOrder.title) {
-          items.sort((a, b) => a.title.compareTo(b.title));
-        }
-        if (_order == CatalogOrder.short) {
-          items.sort((a, b) => a.episodeCount.compareTo(b.episodeCount));
-        }
+        sortCatalog(items, _order);
         final popularTags = <String>{..._tags};
         for (final drama in available) {
           popularTags.addAll(drama.tags.where((tag) => tag.length <= 6));
@@ -152,12 +151,23 @@ class _LibraryScreenState extends State<LibraryScreen> {
                           child: Row(
                             children: [
                               _category(null, '综合'),
-                              for (final channel in DramaChannel.values)
+                              for (final channel in app.repository.channels)
                                 _category(channel, channel.label),
                             ],
                           ),
                         ),
                       ),
+                      if (repo.hasRankings)
+                        IconButton(
+                          tooltip: '热播榜',
+                          icon: const Icon(Icons.emoji_events_outlined),
+                          onPressed: () => Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) =>
+                                  RankingsScreen(onPlay: widget.onPlay),
+                            ),
+                          ),
+                        ),
                       TextButton(
                         onPressed: () => _openFilters(popularTags.toList()),
                         style: TextButton.styleFrom(
@@ -302,6 +312,15 @@ class _LibraryScreenState extends State<LibraryScreen> {
                               return DramaCard(
                                 drama: drama,
                                 favorite: app.isFavorite(drama.id),
+                                footer: sortMetric(drama, _order) == null
+                                    ? null
+                                    : Text(
+                                        sortMetric(drama, _order)!,
+                                        style: TextStyle(
+                                          color: context.muted,
+                                          fontSize: 11,
+                                        ),
+                                      ),
                                 aspectRatio: [
                                   0.66,
                                   0.72,
@@ -574,17 +593,18 @@ class _LibraryScreenState extends State<LibraryScreen> {
                 spacing: 8,
                 runSpacing: 8,
                 children: [
-                  for (final entry in {
-                    CatalogOrder.recommended: '推荐',
-                    CatalogOrder.title: '剧名',
-                    CatalogOrder.short: '集数少优先',
-                  }.entries)
+                  for (final item in CatalogOrder.values)
                     TagPill(
-                      entry.value,
-                      selected: order == entry.key,
-                      onTap: () => update(() => order = entry.key),
+                      item.label,
+                      selected: order == item,
+                      onTap: () => update(() => order = item),
                     ),
                 ],
+              ),
+              const SizedBox(height: 12),
+              Text(
+                '按已加载短剧排序，缺少数据的短剧排在最后',
+                style: TextStyle(color: context.muted, fontSize: 12),
               ),
             ],
           ),

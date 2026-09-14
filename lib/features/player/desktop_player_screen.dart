@@ -117,6 +117,10 @@ class _DesktopPlayerScreenState extends State<DesktopPlayerScreen>
     if (mounted) setState(() {});
   }
 
+  @override
+  void didHaveMemoryPressure() =>
+      _session.trimPreload(cooldown: const Duration(minutes: 1));
+
   void _windowChanged() {
     if (_closing) return;
     _syncPauseReasons();
@@ -444,6 +448,7 @@ class _DesktopPlayerScreenState extends State<DesktopPlayerScreen>
                       widget.videoSurface ??
                           (engine is MediaKitEngine
                               ? Video(
+                                  key: ObjectKey(engine.video),
                                   controller: engine.video,
                                   fit: BoxFit.contain,
                                   controls: NoVideoControls,
@@ -465,7 +470,7 @@ class _DesktopPlayerScreenState extends State<DesktopPlayerScreen>
                         onSecondaryTap: () => _openPanel(_DesktopPanel.menu),
                         child: const SizedBox.expand(),
                       ),
-                      if (_session.loadingDetail || _session.buffering)
+                      if (_session.showLoading)
                         IgnorePointer(
                           child: Center(
                             child: Column(

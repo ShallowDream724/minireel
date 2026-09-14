@@ -7,12 +7,13 @@ import 'package:sqflite/sqflite.dart' as mobile;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import '../../domain/models/drama.dart';
+import '../../domain/models/catalog_page.dart';
 import '../../domain/models/preferences.dart';
 import '../../domain/models/watch_record.dart';
 import 'app_store.dart';
 
 /// The DatabaseFactory is injectable for the future Windows SQLite backend.
-final class SqliteAppStore implements AppStore {
+final class SqliteAppStore implements AppStore, SourceStateStore {
   SqliteAppStore._(this._db);
   final Database _db;
 
@@ -122,6 +123,38 @@ final class SqliteAppStore implements AppStore {
   }
 
   @override
+  Future<Map<String, dynamic>?> readSourceState(String key) async =>
+      (await _readSetting('source:$key')) as Map<String, dynamic>?;
+
+  @override
+  Future<void> saveSourceState(String key, Map<String, dynamic> value) =>
+      _saveSetting('source:$key', value);
+
+  @override
+  Future<void> saveCatalogPage(
+    String key,
+    List<Drama> dramas,
+    CatalogCursor cursor,
+    bool hasMore,
+  ) => _db.transaction((txn) async {
+    final batch = txn.batch();
+    for (final drama in dramas) {
+      final row = {
+        'id': drama.id,
+        'source': drama.source,
+        'payload': jsonEncode(drama.toJson()),
+      };
+      batch.insert('catalog', row, conflictAlgorithm: ConflictAlgorithm.ignore);
+      batch.update('catalog', row, where: 'id = ?', whereArgs: [drama.id]);
+    }
+    batch.insert('settings', {
+      'key': 'source:catalog:$key',
+      'value': jsonEncode({'cursor': cursor.toJson(), 'hasMore': hasMore}),
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+    await batch.commit(noResult: true);
+  });
+
+  @override
   Future<Preferences> readPreferences() async => Preferences.fromJson(
     (await _readSetting('preferences') as Map<String, dynamic>?) ?? {},
   );
@@ -209,6 +242,11 @@ final class SqliteAppStore implements AppStore {
     await txn.delete('catalog');
     await txn.delete('details');
     await txn.delete('settings', where: 'key = ?', whereArgs: ['lastRefresh']);
+    await txn.delete(
+      'settings',
+      where: 'key LIKE ?',
+      whereArgs: ['source:catalog:%'],
+    );
   });
   @override
   Future<void> close() => _db.close();

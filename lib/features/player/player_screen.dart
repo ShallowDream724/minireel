@@ -17,6 +17,8 @@ import '../detail/detail_sheet.dart';
 import '../settings/settings_screen.dart';
 import '../shared/widgets.dart';
 import 'gesture_controller.dart';
+import 'player_gesture_surface.dart';
+import 'episode_pager.dart';
 import 'player_controls.dart';
 
 enum _Panel { menu, episodes, speed, quality, guide, exit }
@@ -46,12 +48,13 @@ class _PlayerScreenState extends State<PlayerScreen>
   bool _foreground = true;
   bool _awake = false;
   bool _closing = false;
+  bool _paging = false;
+  bool get _verticalPaging => Platform.isAndroid && !_landscape;
   GestureHud? _hud;
   Duration? _railPreview;
   String? _message;
   Timer? _topTimer;
   Timer? _railTimer;
-  Timer? _hudTimer;
   Timer? _messageTimer;
 
   @override
@@ -79,15 +82,11 @@ class _PlayerScreenState extends State<PlayerScreen>
         }
         _haptic();
       },
-      onLockedTap: () {},
       onMenu: () => unawaited(_openPanel(_Panel.menu)),
       onBoost: _session.boost,
       onSeek: (target) => unawaited(_session.seek(target)),
       onScrubState: (active) =>
           active ? _session.hold('scrub') : _session.release('scrub'),
-      onBrightness: (v) => unawaited(_device.setBrightness(v)),
-      onVolume: (v) => unawaited(_device.setVolume(v)),
-      onEpisode: _changeEpisode,
       onHud: _showHud,
       onHaptic: _haptic,
       readPosition: () => _session.position,
@@ -138,9 +137,108 @@ class _PlayerScreenState extends State<PlayerScreen>
     _sessionChanged();
   }
 
+  @override
+  void didHaveMemoryPressure() =>
+      _session.trimPreload(cooldown: const Duration(minutes: 1));
+
+  void _pagingChanged(bool paging) {
+    if (!mounted || _closing || _paging == paging) return;
+    setState(() => _paging = paging);
+    if (paging) {
+      _gestures.cancel();
+      _session.hold('paging');
+    } else {
+      _session.release('paging');
+    }
+  }
+
+  void _selectPage(int index) {
+    if (_closing || _locked || !_foreground || index == _session.currentIndex) {
+      return;
+    }
+    _haptic();
+    _showTop();
+    unawaited(_session.playEpisode(index));
+  }
+
   void _haptic() {
     if (_app.preferences.haptics) unawaited(HapticFeedback.selectionClick());
   }
+
+  Widget _video(VideoController controller) => IgnorePointer(
+    child: Video(
+      key: ObjectKey(controller),
+      controller: controller,
+      fit: BoxFit.contain,
+      controls: NoVideoControls,
+      pauseUponEnteringBackgroundMode: false,
+      resumeUponEnteringForegroundMode: false,
+      wakelock: false,
+    ),
+  );
+
+  Widget _buildVideoSurface() => ValueListenableBuilder<int>(
+    valueListenable: _engine.videoChanges,
+    builder: (context, _, _) {
+      if (!_verticalPaging || _session.episodes.isEmpty) {
+        return _video(_engine.video);
+      }
+      return EpisodePager(
+        index: _session.currentIndex,
+        count: _session.episodes.length,
+        enabled:
+            !_locked &&
+            !_sheetOpen &&
+            !_hint &&
+            _foreground &&
+            _railPreview == null &&
+            _hud?.kind != GestureHudKind.boost &&
+            _hud?.kind != GestureHudKind.seek,
+        onSelected: _selectPage,
+        onScrollingChanged: _pagingChanged,
+        itemBuilder: (context, index) {
+          final episode = _session.episodes[index];
+          final controller = _engine.videoForEpisode(episode.id);
+          return RepaintBoundary(
+            key: ValueKey(episode.id),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                const ColoredBox(color: Colors.black),
+                if (controller != null)
+                  _video(controller)
+                else
+                  Opacity(
+                    opacity: .5,
+                    child: CoverImage(
+                      drama: _session.drama,
+                      fit: BoxFit.contain,
+                    ),
+                  ),
+                if (index != _session.currentIndex || _paging)
+                  Positioned(
+                    left: 24,
+                    right: 24,
+                    bottom: 40,
+                    child: Text(
+                      '${_session.drama.title} · ${episode.title}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        shadows: [Shadow(blurRadius: 8)],
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          );
+        },
+      );
+    },
+  );
 
   void _showTop({bool rebuild = true}) {
     _topTimer?.cancel();
@@ -167,15 +265,7 @@ class _PlayerScreenState extends State<PlayerScreen>
 
   void _showHud(GestureHud? hud) {
     if (!mounted || _closing) return;
-    _hudTimer?.cancel();
     setState(() => _hud = hud);
-    if (hud?.kind == GestureHudKind.brightness ||
-        hud?.kind == GestureHudKind.volume ||
-        hud?.kind == GestureHudKind.episode) {
-      _hudTimer = Timer(const Duration(milliseconds: 850), () {
-        if (mounted) setState(() => _hud = null);
-      });
-    }
   }
 
   void _tell(String message) {
@@ -226,7 +316,7 @@ class _PlayerScreenState extends State<PlayerScreen>
     if (_closing || _locked) return;
     _gestures.cancel();
     _cancelSeek();
-    _hudTimer?.cancel();
+    _pagingChanged(false);
     setState(() {
       _landscape = value;
       _railOpen = false;
@@ -268,7 +358,6 @@ class _PlayerScreenState extends State<PlayerScreen>
     WidgetsBinding.instance.removeObserver(this);
     _topTimer?.cancel();
     _railTimer?.cancel();
-    _hudTimer?.cancel();
     _messageTimer?.cancel();
     _gestures.dispose();
     _session.removeListener(_sessionChanged);
@@ -319,13 +408,23 @@ class _PlayerScreenState extends State<PlayerScreen>
               return Stack(
                 fit: StackFit.expand,
                 children: [
-                  Video(
-                    controller: _engine.video,
-                    fit: BoxFit.contain,
-                    controls: NoVideoControls,
-                    pauseUponEnteringBackgroundMode: false,
-                    resumeUponEnteringForegroundMode: false,
-                    wakelock: false,
+                  Semantics(
+                    label: _landscape
+                        ? '播放器触控区域，单击显示控制栏'
+                        : '播放器触控区域，单击播放或暂停，上下滚动切换剧集',
+                    button: true,
+                    onTap: _locked || _sheetOpen || _hint || !_foreground
+                        ? null
+                        : _gestures.tap,
+                    child: PlayerGestureSurface(
+                      key: const ValueKey('player-gesture-surface'),
+                      controller: _gestures,
+                      enabled: !_sheetOpen && !_hint && _foreground,
+                      locked: _locked,
+                      landscape: _landscape,
+                      sensitivity: app.preferences.sensitivity,
+                      child: _buildVideoSurface(),
+                    ),
                   ),
                   if (!_device.applicationBrightnessAvailable)
                     IgnorePointer(
@@ -335,38 +434,7 @@ class _PlayerScreenState extends State<PlayerScreen>
                         ),
                       ),
                     ),
-                  Semantics(
-                    label: _landscape ? '播放器触控区域，单击显示控制栏' : '播放器触控区域，单击播放或暂停',
-                    button: true,
-                    onTap: _locked
-                        ? null
-                        : _landscape
-                        ? _showTop
-                        : _session.togglePlay,
-                    child: Listener(
-                      key: const ValueKey('player-gesture-surface'),
-                      behavior: HitTestBehavior.opaque,
-                      onPointerDown: (event) {
-                        if (_sheetOpen || _hint) return;
-                        _gestures.down(
-                          pointer: event.pointer,
-                          point: event.localPosition,
-                          size: size,
-                          locked: _locked,
-                          brightness: _device.brightness,
-                          volume: _device.volume,
-                          sensitivity: app.preferences.sensitivity,
-                          landscape: _landscape,
-                        );
-                      },
-                      onPointerMove: (event) =>
-                          _gestures.move(event.pointer, event.localPosition),
-                      onPointerUp: (event) => _gestures.up(event.pointer),
-                      onPointerCancel: (_) => _gestures.cancel(),
-                      child: const SizedBox.expand(),
-                    ),
-                  ),
-                  if (_session.loadingDetail || _session.buffering)
+                  if (_session.showLoading && !_paging)
                     IgnorePointer(
                       child: Center(
                         child: Column(
@@ -400,6 +468,7 @@ class _PlayerScreenState extends State<PlayerScreen>
                       !_session.buffering &&
                       !_session.loadingDetail &&
                       _session.error == null &&
+                      !_paging &&
                       !_sheetOpen &&
                       !_hint)
                     IgnorePointer(
@@ -417,7 +486,7 @@ class _PlayerScreenState extends State<PlayerScreen>
                         ),
                       ),
                     ),
-                  if (_session.error != null && !_hint)
+                  if (_session.error != null && !_hint && !_paging)
                     Center(
                       child: Padding(
                         padding: const EdgeInsets.all(34),
@@ -592,7 +661,7 @@ class _PlayerScreenState extends State<PlayerScreen>
                       ),
                     ),
                   if (_hud != null && !_hint && !_locked)
-                    IgnorePointer(child: _buildHud(size)),
+                    IgnorePointer(child: _buildHud()),
                   if (_message != null && !_hint && !_locked)
                     Positioned(
                       left: 35,
@@ -823,7 +892,7 @@ class _PlayerScreenState extends State<PlayerScreen>
     ),
   );
 
-  Widget _buildHud(Size size) {
+  Widget _buildHud() {
     final hud = _hud!;
     switch (hud.kind) {
       case GestureHudKind.boost:
@@ -851,67 +920,6 @@ class _PlayerScreenState extends State<PlayerScreen>
                     ),
                   ),
                 ],
-              ),
-            ),
-          ),
-        );
-      case GestureHudKind.brightness:
-      case GestureHudKind.volume:
-        return Align(
-          alignment: hud.kind == GestureHudKind.brightness
-              ? Alignment.centerLeft
-              : Alignment.centerRight,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 26),
-            child: _glass(
-              radius: 22,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 13,
-                  vertical: 17,
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      hud.kind == GestureHudKind.brightness
-                          ? Icons.light_mode_outlined
-                          : hud.level == 0
-                          ? Icons.volume_off_rounded
-                          : Icons.volume_up_rounded,
-                      color: Colors.white,
-                      size: 19,
-                    ),
-                    const SizedBox(height: 13),
-                    SizedBox(
-                      height: 112,
-                      width: 4,
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(4),
-                        child: Stack(
-                          children: [
-                            const Positioned.fill(
-                              child: ColoredBox(color: Colors.white24),
-                            ),
-                            Align(
-                              alignment: Alignment.bottomCenter,
-                              child: FractionallySizedBox(
-                                heightFactor: hud.level,
-                                widthFactor: 1,
-                                child: const ColoredBox(color: Colors.white),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    Text(
-                      '${(hud.level * 100).round()}',
-                      style: const TextStyle(color: Colors.white, fontSize: 11),
-                    ),
-                  ],
-                ),
               ),
             ),
           ),
@@ -980,31 +988,6 @@ class _PlayerScreenState extends State<PlayerScreen>
                       color: ReelTheme.darkAccent,
                       backgroundColor: Colors.white24,
                     ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      case GestureHudKind.episode:
-        return Center(
-          child: _glass(
-            radius: 20,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 15),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    hud.next
-                        ? Icons.keyboard_arrow_up_rounded
-                        : Icons.keyboard_arrow_down_rounded,
-                    color: Colors.white,
-                  ),
-                  const SizedBox(width: 9),
-                  Text(
-                    hud.next ? '下一集' : '上一集',
-                    style: const TextStyle(color: Colors.white, fontSize: 14),
                   ),
                 ],
               ),
@@ -1127,6 +1110,32 @@ class _PlayerScreenState extends State<PlayerScreen>
                 ],
               ),
               const SizedBox(height: 14),
+              StatefulBuilder(
+                builder: (context, update) => Column(
+                  children: [
+                    _deviceSlider(
+                      icon: Icons.brightness_6_outlined,
+                      label: '亮度',
+                      value: _device.brightness,
+                      minimum: .03,
+                      onChanged: (value) {
+                        unawaited(_device.setBrightness(value));
+                        update(() {});
+                        if (mounted) setState(() {});
+                      },
+                    ),
+                    _deviceSlider(
+                      icon: Icons.volume_up_outlined,
+                      label: '音量',
+                      value: _device.volume,
+                      onChanged: (value) {
+                        unawaited(_device.setVolume(value));
+                        update(() {});
+                      },
+                    ),
+                  ],
+                ),
+              ),
               if (_session.drama.intro.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 12),
@@ -1235,6 +1244,36 @@ class _PlayerScreenState extends State<PlayerScreen>
         return const SizedBox.shrink();
     }
   }
+
+  Widget _deviceSlider({
+    required IconData icon,
+    required String label,
+    required double value,
+    required ValueChanged<double> onChanged,
+    double minimum = 0,
+  }) => Row(
+    children: [
+      Icon(icon, color: Colors.white70, size: 20),
+      const SizedBox(width: 10),
+      Text(label, style: const TextStyle(color: Colors.white70, fontSize: 13)),
+      Expanded(
+        child: Slider(
+          value: value.clamp(minimum, 1),
+          min: minimum,
+          label: '$label ${(value * 100).round()}%',
+          onChanged: onChanged,
+        ),
+      ),
+      SizedBox(
+        width: 36,
+        child: Text(
+          '${(value * 100).round()}%',
+          textAlign: TextAlign.right,
+          style: const TextStyle(color: Colors.white54, fontSize: 12),
+        ),
+      ),
+    ],
+  );
 
   Widget _menuAction(
     BuildContext context,

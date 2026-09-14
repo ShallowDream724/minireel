@@ -20,7 +20,16 @@ abstract interface class TextClient {
   });
 }
 
-final class AppHttpClient implements TextClient {
+abstract interface class SignedJsonClient {
+  Future<String> postSignedJson(
+    Uri Function() prepareUri,
+    String body,
+    Map<String, String> Function(Uri) prepareHeaders, {
+    CancelToken? cancelToken,
+  });
+}
+
+final class AppHttpClient implements TextClient, SignedJsonClient {
   AppHttpClient(SourceConfig config, {Dio? dio})
     : _config = config,
       _dio =
@@ -47,19 +56,51 @@ final class AppHttpClient implements TextClient {
     Uri uri, {
     Map<String, String>? headers,
     CancelToken? cancelToken,
+  }) => _request(
+    () => uri,
+    headers: (_) => headers ?? {},
+    cancelToken: cancelToken,
+  );
+
+  @override
+  Future<String> postSignedJson(
+    Uri Function() prepareUri,
+    String body,
+    Map<String, String> Function(Uri) prepareHeaders, {
+    CancelToken? cancelToken,
+  }) => _request(
+    prepareUri,
+    body: body,
+    headers: prepareHeaders,
+    cancelToken: cancelToken,
+  );
+
+  Future<String> _request(
+    Uri Function() prepareUri, {
+    required Map<String, String> Function(Uri) headers,
+    String? body,
+    CancelToken? cancelToken,
   }) async {
     for (var attempt = 0; attempt < _config.retries; attempt++) {
       cancelToken?.throwIfCancellationRequested();
       try {
-        final response = await _dio.getUri<ResponseBody>(
+        final uri = prepareUri();
+        final response = await _dio.requestUri<ResponseBody>(
           uri,
-          options: Options(headers: headers, responseType: ResponseType.stream),
+          data: body,
+          options: Options(
+            method: body == null ? 'GET' : 'POST',
+            headers: headers(uri),
+            // A redirected signed request must be rebuilt and re-signed.
+            followRedirects: body == null,
+            responseType: ResponseType.stream,
+          ),
           cancelToken: cancelToken,
         );
-        final body = response.data!;
+        final responseBody = response.data!;
         final bytes = BytesBuilder(copy: false);
         // Streaming the metadata bounds memory even with an absent/fake length.
-        await for (final chunk in body.stream) {
+        await for (final chunk in responseBody.stream) {
           cancelToken?.throwIfCancellationRequested();
           if (bytes.length + chunk.length > maxBodyBytes) {
             throw const AppException('剧库响应过大，请稍后重试', kind: FailureKind.parsing);

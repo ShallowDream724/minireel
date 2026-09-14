@@ -1,6 +1,19 @@
 import '../../domain/models/drama.dart';
+import '../../domain/models/catalog_page.dart';
 import '../../domain/models/preferences.dart';
 import '../../domain/models/watch_record.dart';
+
+/// Optional persistent source state; old adapters/stores remain compatible.
+abstract interface class SourceStateStore {
+  Future<Map<String, dynamic>?> readSourceState(String key);
+  Future<void> saveSourceState(String key, Map<String, dynamic> value);
+  Future<void> saveCatalogPage(
+    String key,
+    List<Drama> dramas,
+    CatalogCursor cursor,
+    bool hasMore,
+  );
+}
 
 abstract interface class AppStore {
   Future<List<Drama>> readCatalog();
